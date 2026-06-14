@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Meeting Recorder</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0c0f14;--surface:#141920;--surface2:#1d2535;--border:#252e42;
+  --text:#e2e8f0;--text2:#94a3b8;--muted:#4b5a70;
+  --c1:#ef4444;--c2:#3b82f6;--c3:#a855f7;--c4:#22c55e;
+  --mono:'JetBrains Mono',monospace;--sans:'Inter',sans-serif;
+}
+body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:100vh;padding:20px 16px 60px}
+.wrap{max-width:560px;margin:0 auto}
+
+/* Header */
+.header{text-align:center;margin-bottom:32px;padding-top:8px}
+.header h1{font-size:22px;font-weight:700;letter-spacing:-0.02em;margin-bottom:4px}
+.header p{font-size:12px;color:var(--muted)}
+
+/* Pipeline track */
+.pipeline{display:flex;align-items:center;margin-bottom:32px;gap:0}
+.pip-step{flex:1;text-align:center;position:relative}
+.pip-dot{width:32px;height:32px;border-radius:50%;border:2px solid var(--border);background:var(--surface);margin:0 auto 4px;display:flex;align-items:center;justify-content:center;font-size:14px;transition:all .3s;position:relative;z-index:1}
+.pip-label{font-size:9px;color:var(--muted);font-weight:600;letter-spacing:0.08em;text-transform:uppercase}
+.pip-line{position:absolute;top:15px;left:50%;width:100%;height:2px;background:var(--border);z-index:0;transition:background .3s}
+.pip-step:last-child .pip-line{display:none}
+.pip-step.active .pip-dot{border-color:currentColor;box-shadow:0 0 0 4px rgba(255,255,255,0.06)}
+.pip-step.done .pip-dot{background:var(--surface2)}
+.pip-step.done .pip-line{background:var(--c4)}
+.pip-step[data-n="1"].active .pip-dot,.pip-step[data-n="1"].done .pip-dot{border-color:var(--c1);color:var(--c1)}
+.pip-step[data-n="2"].active .pip-dot,.pip-step[data-n="2"].done .pip-dot{border-color:var(--c2);color:var(--c2)}
+.pip-step[data-n="3"].active .pip-dot,.pip-step[data-n="3"].done .pip-dot{border-color:var(--c3);color:var(--c3)}
+.pip-step[data-n="4"].active .pip-dot,.pip-step[data-n="4"].done .pip-dot{border-color:var(--c4);color:var(--c4)}
+
+/* Cards */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:14px;margin-bottom:12px;overflow:hidden;transition:border-color .2s}
+.card.active{border-color:var(--active-color,var(--border))}
+.card-head{padding:14px 16px;display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none}
+.step-badge{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0}
+.card-title{font-size:14px;font-weight:600;flex:1}
+.card-status{font-size:11px;color:var(--muted);font-family:var(--mono)}
+.card-body{padding:0 16px 16px;display:none}
+.card.open .card-body{display:block}
+.card-body.always{display:block!important}
+
+/* Step 1 - Record */
+.wave-box{background:var(--surface2);border-radius:10px;padding:16px 12px 10px;margin-bottom:14px}
+canvas{width:100%;height:64px;display:block;border-radius:6px}
+.timer-row{display:flex;justify-content:space-between;align-items:center;margin-top:8px}
+.timer{font-family:var(--mono);font-size:26px;font-weight:400}
+.rec-status{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:5px}
+.dot-pulse{width:7px;height:7px;border-radius:50%;background:var(--muted)}
+.dot-pulse.on{background:var(--c1);animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.ctrl{display:flex;gap:10px;justify-content:center;align-items:center;margin-bottom:12px}
+.btn-circle{width:52px;height:52px;border-radius:50%;border:none;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;transition:all .15s;font-family:var(--sans)}
+.btn-rec-main{width:62px;height:62px;background:var(--c1);color:#fff}
+.btn-rec-main:hover{filter:brightness(1.15)}
+.btn-rec-main.recording{background:#7f1d1d;animation:recglow 1.4s ease-in-out infinite}
+@keyframes recglow{0%,100%{box-shadow:0 0 0 3px rgba(239,68,68,.2)}50%{box-shadow:0 0 0 8px rgba(239,68,68,.07)}}
+.btn-sm-ctrl{background:var(--surface2);border:1px solid var(--border);color:var(--text2)}
+.btn-sm-ctrl:hover:not(:disabled){background:var(--border);color:var(--text)}
+.btn-sm-ctrl:disabled{opacity:.35;cursor:not-allowed}
+.rec-list{display:flex;flex-direction:column;gap:6px;margin-top:4px;max-height:180px;overflow-y:auto}
+.rec-item-small{background:var(--surface2);border-radius:8px;padding:8px 10px;display:flex;align-items:center;gap:8px}
+.rec-item-small audio{flex:1;height:26px;accent-color:var(--c2)}
+.rec-item-small .rname{font-size:11px;color:var(--text2);min-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pass-btn{font-size:11px;padding:4px 10px;border-radius:5px;border:1px solid var(--c2);color:#60a5fa;background:transparent;cursor:pointer;white-space:nowrap;font-family:var(--sans);font-weight:500;transition:all .15s}
+.pass-btn:hover{background:rgba(59,130,246,.12)}
+
+/* Step 2 - Convert */
+.dropzone{border:2px dashed var(--border);border-radius:10px;padding:28px 16px;text-align:center;cursor:pointer;transition:all .2s;margin-bottom:12px;position:relative}
+.dropzone:hover,.dropzone.drag{border-color:var(--c2);background:rgba(59,130,246,.04)}
+.dropzone input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.dropzone p{font-size:13px;color:var(--muted)}
+.dropzone small{font-size:11px;color:var(--muted);margin-top:4px;display:block}
+.bitrate-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.bitrate-row label{font-size:12px;color:var(--text2)}
+.bitrate-row .val{font-family:var(--mono);font-size:12px;color:#60a5fa}
+input[type=range]{accent-color:var(--c2);width:120px}
+.convert-file-list{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+.cf-item{background:var(--surface2);border-radius:8px;padding:8px 12px;font-size:12px;display:flex;align-items:center;gap:8px}
+.cf-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2)}
+.cf-prog{font-family:var(--mono);font-size:10px;color:var(--muted)}
+.prog-bar-wrap{height:3px;background:var(--border);border-radius:2px;margin-top:4px}
+.prog-bar{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--c2),#60a5fa);width:0%;transition:width .3s}
+
+/* Buttons */
+.btn{width:100%;padding:11px;border-radius:9px;border:none;font-size:14px;font-weight:600;cursor:pointer;font-family:var(--sans);transition:all .15s;letter-spacing:.01em}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-red{background:var(--c1);color:#fff}
+.btn-red:hover:not(:disabled){filter:brightness(1.1)}
+.btn-blue{background:var(--c2);color:#fff}
+.btn-blue:hover:not(:disabled){filter:brightness(1.1)}
+.btn-purple{background:var(--c3);color:#fff}
+.btn-purple:hover:not(:disabled){filter:brightness(1.1)}
+.btn-green{background:var(--c4);color:#000;font-weight:700}
+.btn-green:hover:not(:disabled){filter:brightness(1.1)}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--text2)}
+.btn-outline:hover:not(:disabled){background:var(--surface2);color:var(--text)}
+
+/* Step 3 */
+.info-box{background:var(--surface2);border-radius:8px;padding:12px 14px;font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:12px}
+.info-box strong{color:var(--text)}
+.step-btns{display:flex;flex-direction:column;gap:8px}
+
+/* Step 4 */
+.result-area{width:100%;min-height:160px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;color:var(--text);font-size:13px;font-family:var(--sans);line-height:1.7;resize:vertical;outline:none;margin-top:8px}
+.result-area:focus{border-color:var(--c4)}
+.result-label{font-size:11px;color:var(--muted);margin-bottom:4px;margin-top:12px}
+
+/* Toast */
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(8px);background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:13px;padding:9px 18px;border-radius:8px;opacity:0;transition:all .2s;pointer-events:none;z-index:999;white-space:nowrap}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+.spinner{display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;margin-right:6px;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+.meter-wrap{display:flex;gap:2px;align-items:flex-end;height:24px;margin-top:8px}
+.mbar{flex:1;border-radius:1px;background:var(--border);min-height:2px;transition:height .06s}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- Header -->
+<div class="header">
+  <h1>🎙 Meeting Recorder</h1>
+  <p>บันทึก · แปลง · ตัด Noise · ถอดเสียง+สรุป</p>
+</div>
+
+<!-- Pipeline -->
+<div class="pipeline">
+  <div class="pip-step active" data-n="1" id="pip1">
+    <div class="pip-line"></div>
+    <div class="pip-dot">🎙</div>
+    <div class="pip-label">บันทึก</div>
+  </div>
+  <div class="pip-step" data-n="2" id="pip2">
+    <div class="pip-line"></div>
+    <div class="pip-dot">🔄</div>
+    <div class="pip-label">MP3</div>
+  </div>
+  <div class="pip-step" data-n="3" id="pip3">
+    <div class="pip-line"></div>
+    <div class="pip-dot">✂️</div>
+    <div class="pip-label">Noise</div>
+  </div>
+  <div class="pip-step" data-n="4" id="pip4">
+    <div class="pip-line"></div>
+    <div class="pip-dot">📝</div>
+    <div class="pip-label">สรุป</div>
+  </div>
+</div>
+
+<!-- ═══ STEP 1 ═══ -->
+<div class="card open active" id="card1" style="--active-color:var(--c1)">
+  <div class="card-head" onclick="toggleCard(1)">
+    <div class="step-badge" style="background:rgba(239,68,68,.15);color:var(--c1)">1</div>
+    <div class="card-title">บันทึกเสียง</div>
+    <div class="card-status" id="s1status">พร้อม</div>
+  </div>
+  <div class="card-body">
+    <div class="wave-box">
+      <canvas id="waveCanvas"></canvas>
+      <div class="meter-wrap" id="meterWrap"></div>
+      <div class="timer-row">
+        <span class="timer" id="recTimer">00:00</span>
+        <div class="rec-status"><div class="dot-pulse" id="recDot"></div><span id="recStatusTxt">พร้อมบันทึก</span></div>
+      </div>
+    </div>
+    <div class="ctrl">
+      <button class="btn-circle btn-sm-ctrl" id="btnPause" disabled title="หยุดชั่วคราว">⏸</button>
+      <button class="btn-circle btn-rec-main" id="btnRec" title="บันทึก">⏺</button>
+      <button class="btn-circle btn-sm-ctrl" id="btnStop" disabled title="หยุด">⏹</button>
+    </div>
+    <div class="rec-list" id="recList"></div>
+  </div>
+</div>
+
+<!-- ═══ STEP 2 ═══ -->
+<div class="card" id="card2" style="--active-color:var(--c2)">
+  <div class="card-head" onclick="toggleCard(2)">
+    <div class="step-badge" style="background:rgba(59,130,246,.15);color:var(--c2)">2</div>
+    <div class="card-title">แปลงเป็น MP3</div>
+    <div class="card-status" id="s2status">รอไฟล์</div>
+  </div>
+  <div class="card-body">
+    <div class="dropzone" id="dropzone2">
+      <input type="file" id="fileInput2" accept=".wav,.webm,audio/*" multiple />
+      <p>📂 วาง WAV/WebM ที่นี่ หรือคลิกเลือก</p>
+      <small>หรือใช้ไฟล์จาก Step 1 โดยตรง</small>
+    </div>
+    <div class="bitrate-row">
+      <label>Bitrate</label>
+      <div style="display:flex;align-items:center;gap:8px">
+        <input type="range" id="bitrateSlider" min="0" max="4" value="2" oninput="updateBitrate()">
+        <span class="val" id="bitrateVal">128 kbps</span>
+      </div>
+    </div>
+    <div class="convert-file-list" id="convertList"></div>
+    <button class="btn btn-blue" id="btnConvert" disabled>แปลง → MP3</button>
+  </div>
+</div>
+
+<!-- ═══ STEP 3 ═══ -->
+<div class="card" id="card3" style="--active-color:var(--c3)">
+  <div class="card-head" onclick="toggleCard(3)">
+    <div class="step-badge" style="background:rgba(168,85,247,.15);color:var(--c3)">3</div>
+    <div class="card-title">ตัด Noise — Adobe Podcast</div>
+    <div class="card-status" id="s3status">รอ MP3</div>
+  </div>
+  <div class="card-body">
+    <div class="info-box">
+      <strong>วิธีใช้:</strong><br>
+      1. กด "เปิด Adobe Podcast" ด้านล่าง<br>
+      2. อัปโหลดไฟล์ MP3 จาก Step 2<br>
+      3. กด Enhance Speech → รอประมวลผล<br>
+      4. ดาวน์โหลดไฟล์ที่ตัด noise แล้ว<br>
+      5. กลับมาที่นี่ → กด "เสร็จแล้ว ไปต่อ"
+    </div>
+    <div class="step-btns">
+      <button class="btn btn-purple" onclick="openAdobe()">🔗 เปิด Adobe Podcast Enhance</button>
+      <button class="btn btn-outline" id="btnStep3Done" onclick="doneStep3()">✅ เสร็จแล้ว ไป Step 4</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ STEP 4 ═══ -->
+<div class="card" id="card4" style="--active-color:var(--c4)">
+  <div class="card-head" onclick="toggleCard(4)">
+    <div class="step-badge" style="background:rgba(34,197,94,.15);color:var(--c4)">4</div>
+    <div class="card-title">ถอดเสียง + สรุป</div>
+    <div class="card-status" id="s4status">รอ</div>
+  </div>
+  <div class="card-body">
+    <div class="info-box">
+      <strong>วิธีใช้:</strong><br>
+      1. ใส่ Gemini API Key (ใส่ครั้งเดียว ระบบจำไว้ในเบราว์เซอร์)<br>
+      2. อัปโหลดไฟล์เสียงที่ตัด noise แล้วจาก Step 3<br>
+      3. กด "ถอดเสียง + สรุป" → รอผลลัพธ์อัตโนมัติ<br>
+      4. แก้ไข / Copy / บันทึกผลลัพธ์ด้านล่าง
+    </div>
+
+    <div class="bitrate-row">
+      <label>Gemini API Key</label>
+      <div style="display:flex;align-items:center;gap:6px;flex:1;margin-left:10px">
+        <input type="password" id="apiKeyInput" placeholder="วาง API key ที่นี่" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 10px;font-size:12px;font-family:var(--mono)">
+        <button class="pass-btn" id="btnApiKeySave" onclick="saveApiKey()">💾 บันทึก</button>
+      </div>
+    </div>
+    <div id="apiKeyStatus" style="font-size:11px;color:var(--muted);margin-bottom:12px;display:none;align-items:center;gap:8px">
+      <span>🔒 บันทึก API key ไว้แล้ว</span>
+      <button class="pass-btn" onclick="editApiKey()">แก้ไข</button>
+    </div>
+
+    <div class="dropzone" id="dropzone4">
+      <input type="file" id="fileInput4" accept="audio/*,.mp3,.wav,.webm,.m4a,.ogg" />
+      <p>📂 วางไฟล์เสียงที่ตัด noise แล้ว หรือคลิกเลือก</p>
+      <small id="step4FileName">ยังไม่มีไฟล์</small>
+    </div>
+
+    <button class="btn btn-green" id="btnTranscribe" onclick="transcribeAndSummarize()" disabled style="margin-bottom:12px">🤖 ถอดเสียง + สรุป</button>
+
+    <div class="result-label">📄 ผลสรุป</div>
+    <textarea class="result-area" id="resultArea" placeholder="ผลสรุปจะปรากฏที่นี่หลังประมวลผลเสร็จ..."></textarea>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="btn btn-green" onclick="copyResult()" style="flex:1">📋 Copy สรุป</button>
+      <button class="btn btn-outline" onclick="saveResult()" style="flex:1">💾 บันทึกเป็น .txt</button>
+    </div>
+  </div>
+</div>
+
+</div><!-- /wrap -->
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
+<script>
+// ── Globals ──────────────────────────────────────────────────────────────────
+const BITRATES=[64,96,128,192,320];
+const BRLABELS=['เสียงพูด 64','ประหยัด 96','มาตรฐาน 128','สมดุล 192','สูงสุด 320'];
+let currentBR=128;
+let mediaRec=null,audioCtx=null,analyser=null,animId=null;
+let chunks=[],recordings=[],convertFiles=[];
+let isRec=false,isPaused=false,startTs=0,pausedMs=0,timerInt=null;
+let recUid=0,cvUid=0;
+const MBARS=20;
+
+// ── Init meter bars ──────────────────────────────────────────────────────────
+const mw=document.getElementById('meterWrap');
+for(let i=0;i<MBARS;i++){const b=document.createElement('div');b.className='mbar';b.id='mb'+i;mw.appendChild(b);}
+
+// ── Pipeline highlight ───────────────────────────────────────────────────────
+function setPip(n){
+  for(let i=1;i<=4;i++){
+    const el=document.getElementById('pip'+i);
+    el.classList.remove('active','done');
+    if(i<n) el.classList.add('done');
+    else if(i===n) el.classList.add('active');
+  }
+}
+
+// ── Card toggle ──────────────────────────────────────────────────────────────
+function toggleCard(n){
+  const c=document.getElementById('card'+n);
+  c.classList.toggle('open');
+}
+function openCard(n){
+  for(let i=1;i<=4;i++) document.getElementById('card'+i).classList.remove('open');
+  document.getElementById('card'+n).classList.add('open');
+  setPip(n);
+}
+
+// ── Toast ────────────────────────────────────────────────────────────────────
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2400);
+}
+
+// ── Timer ────────────────────────────────────────────────────────────────────
+function fmtTime(ms){
+  const s=Math.floor(ms/1000),m=Math.floor(s/60);
+  return String(m).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
+}
+function startTimer(){startTs=Date.now()-pausedMs;timerInt=setInterval(()=>{document.getElementById('recTimer').textContent=fmtTime(Date.now()-startTs);},200);}
+function stopTimer(){clearInterval(timerInt);timerInt=null;}
+
+// ── Canvas wave ──────────────────────────────────────────────────────────────
+const cv=document.getElementById('waveCanvas');
+const cx=cv.getContext('2d');
+function resizeCv(){cv.width=cv.offsetWidth*devicePixelRatio;cv.height=cv.offsetHeight*devicePixelRatio;cx.scale(devicePixelRatio,devicePixelRatio);}
+resizeCv();window.addEventListener('resize',resizeCv);
+function drawIdle(){const w=cv.offsetWidth,h=cv.offsetHeight;cx.clearRect(0,0,w,h);cx.strokeStyle='#252e42';cx.lineWidth=1;cx.beginPath();cx.moveTo(0,h/2);cx.lineTo(w,h/2);cx.stroke();}
+drawIdle();
+function drawWave(d){
+  const w=cv.offsetWidth,h=cv.offsetHeight;cx.clearRect(0,0,w,h);
+  const g=cx.createLinearGradient(0,0,w,0);g.addColorStop(0,'#7f1d1d');g.addColorStop(.5,'#ef4444');g.addColorStop(1,'#f87171');
+  cx.strokeStyle=g;cx.lineWidth=1.5;cx.beginPath();
+  const sl=w/d.length;
+  for(let i=0;i<d.length;i++){const y=(d[i]/128)*h/2;i===0?cx.moveTo(0,y):cx.lineTo(i*sl,y);}
+  cx.stroke();
+}
+function startViz(){
+  const wd=new Uint8Array(analyser.fftSize),fd=new Uint8Array(analyser.frequencyBinCount);
+  const loop=()=>{animId=requestAnimationFrame(loop);analyser.getByteTimeDomainData(wd);analyser.getByteFrequencyData(fd);drawWave(wd);
+    const step=Math.floor(fd.length/MBARS);
+    for(let i=0;i<MBARS;i++){let s=0;for(let j=0;j<step;j++)s+=fd[i*step+j];const p=s/step/255;const bar=document.getElementById('mb'+i);bar.style.height=Math.max(2,p*20)+'px';bar.style.background=`hsl(${0+p*20},80%,${40+p*20}%)`;}
+  };loop();
+}
+function stopViz(){if(animId){cancelAnimationFrame(animId);animId=null;}drawIdle();for(let i=0;i<MBARS;i++){const b=document.getElementById('mb'+i);b.style.height='2px';b.style.background='var(--border)';}}
+
+// ── Recording ────────────────────────────────────────────────────────────────
+async function startRec(){
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+    analyser=audioCtx.createAnalyser();analyser.fftSize=2048;
+    const src=audioCtx.createMediaStreamSource(stream);src.connect(analyser);
+    const mimes=['audio/webm;codecs=opus','audio/webm','audio/ogg','audio/mp4'];
+    const mime=mimes.find(m=>MediaRecorder.isTypeSupported(m))||'';
+    mediaRec=new MediaRecorder(stream,mime?{mimeType:mime}:{});
+    chunks=[];
+    mediaRec.ondataavailable=e=>{if(e.data.size>0)chunks.push(e.data);};
+    mediaRec.onstop=()=>finalizeRec(stream,mime);
+    mediaRec.start(100);
+    isRec=true;isPaused=false;pausedMs=0;
+    document.getElementById('btnRec').classList.add('recording');
+    document.getElementById('btnPause').disabled=false;
+    document.getElementById('btnStop').disabled=false;
+    document.getElementById('recDot').className='dot-pulse on';
+    document.getElementById('recStatusTxt').textContent='กำลังบันทึก';
+    document.getElementById('s1status').textContent='⏺ REC';
+    startTimer();startViz();
+  }catch(e){toast('❌ ไม่สามารถเข้าถึงไมโครโฟน');}
+}
+function pauseRec(){
+  if(!isPaused){mediaRec.pause();isPaused=true;pausedMs=Date.now()-startTs;stopTimer();stopViz();document.getElementById('recDot').className='dot-pulse';document.getElementById('recStatusTxt').textContent='หยุดชั่วคราว';document.getElementById('btnPause').textContent='▶';}
+  else{mediaRec.resume();isPaused=false;document.getElementById('recDot').className='dot-pulse on';document.getElementById('recStatusTxt').textContent='กำลังบันทึก';document.getElementById('btnPause').textContent='⏸';startTimer();startViz();}
+}
+function stopRec(){
+  if(!mediaRec)return;
+  mediaRec.stop();isRec=false;isPaused=false;
+  stopTimer();stopViz();
+  document.getElementById('btnRec').classList.remove('recording');
+  document.getElementById('btnPause').disabled=true;document.getElementById('btnStop').disabled=true;
+  document.getElementById('recDot').className='dot-pulse';document.getElementById('recStatusTxt').textContent='พร้อมบันทึก';
+  document.getElementById('btnPause').textContent='⏸';
+  document.getElementById('recTimer').textContent='00:00';pausedMs=0;
+}
+function finalizeRec(stream,mime){
+  stream.getTracks().forEach(t=>t.stop());
+  if(audioCtx){audioCtx.close();audioCtx=null;}
+  const blob=new Blob(chunks,{type:mime||'audio/webm'});
+  const url=URL.createObjectURL(blob);
+  recUid++;
+  const ext=mime.includes('ogg')?'ogg':mime.includes('mp4')?'mp4':'webm';
+  recordings.unshift({id:recUid,blob,url,ext,name:'บันทึก-'+recUid});
+  renderRecList();
+  document.getElementById('s1status').textContent=recordings.length+' ไฟล์';
+  toast('✅ บันทึกเสร็จ');
+}
+function renderRecList(){
+  const el=document.getElementById('recList');
+  el.innerHTML=recordings.map(r=>`
+    <div class="rec-item-small">
+      <span class="rname">${r.name}</span>
+      <audio controls src="${r.url}" preload="none"></audio>
+      <button class="pass-btn" onclick="passToConvert(${r.id})">→ Step 2</button>
+    </div>`).join('');
+}
+function passToConvert(id){
+  const r=recordings.find(x=>x.id===id);if(!r)return;
+  addConvertFile(r.blob,r.name+'.'+r.ext);
+  openCard(2);toast('✅ ส่งไปยัง Step 2 แล้ว');
+}
+
+// ── Convert ──────────────────────────────────────────────────────────────────
+function updateBitrate(){
+  const idx=parseInt(document.getElementById('bitrateSlider').value);
+  currentBR=BITRATES[idx];
+  document.getElementById('bitrateVal').textContent=BRLABELS[idx]+' kbps';
+}
+function addConvertFile(blob,name){
+  cvUid++;
+  convertFiles.push({id:cvUid,blob,name,status:'wait',url:null});
+  renderConvertList();
+  document.getElementById('btnConvert').disabled=false;
+  document.getElementById('s2status').textContent=convertFiles.length+' ไฟล์';
+}
+function renderConvertList(){
+  const el=document.getElementById('convertList');
+  el.innerHTML=convertFiles.map(f=>`
+    <div class="cf-item" id="cfi-${f.id}">
+      <div style="flex:1">
+        <div style="display:flex;justify-content:space-between">
+          <span class="cf-name">${f.name}</span>
+          <span class="cf-prog" id="cfp-${f.id}">${{wait:'รอ',converting:'แปลง...',done:'✅',error:'❌'}[f.status]}</span>
+        </div>
+        <div class="prog-bar-wrap"><div class="prog-bar" id="pb-${f.id}"></div></div>
+      </div>
+      ${f.status==='done'?`<button class="pass-btn" onclick="dlConvert(${f.id})">⬇</button>`:''}
+    </div>`).join('');
+}
+function setConvStatus(id,status,pct){
+  const f=convertFiles.find(x=>x.id===id);if(!f)return;f.status=status;
+  const pg=document.getElementById('pb-'+id);const st=document.getElementById('cfp-'+id);
+  if(pg)pg.style.width=pct+'%';
+  if(st)st.textContent={wait:'รอ',converting:pct+'%',done:'✅',error:'❌'}[status];
+  if(status==='done')renderConvertList();
+}
+function dlConvert(id){
+  const f=convertFiles.find(x=>x.id===id);if(!f||!f.url)return;
+  const a=document.createElement('a');a.href=f.url;a.download=f.name.replace(/\.(wav|webm|ogg|mp4)$/i,'')+`_${currentBR}kbps.mp3`;a.click();
+}
+function decodeWav(buf){
+  const v=new DataView(buf);
+  const ch=v.getUint16(22,true),sr=v.getUint32(24,true),bps=v.getUint16(34,true);
+  let off=44;
+  for(let i=12;i<120&&i<buf.byteLength-8;i++){if(v.getUint8(i)===100&&v.getUint8(i+1)===97&&v.getUint8(i+2)===116&&v.getUint8(i+3)===97){off=i+8;break;}}
+  const bpf=bps/8,ns=Math.floor((buf.byteLength-off)/(ch*bpf));
+  const L=new Int16Array(ns),R=new Int16Array(ns);
+  for(let i=0;i<ns;i++){const o=off+i*ch*bpf;
+    if(bps===16){L[i]=v.getInt16(o,true);R[i]=ch>1?v.getInt16(o+2,true):L[i];}
+    else if(bps===32){const fl=v.getFloat32(o,true);L[i]=Math.max(-32768,Math.min(32767,fl*32767));R[i]=ch>1?Math.max(-32768,Math.min(32767,v.getFloat32(o+4,true)*32767)):L[i];}
+    else{L[i]=(v.getUint8(o)-128)*256;R[i]=ch>1?(v.getUint8(o+1)-128)*256:L[i];}
+  }
+  return{L,R,ch,sr,ns};
+}
+async function encodeMP3(wd,onP){
+  if(typeof lamejs==='undefined')throw new Error('lamejs ไม่พร้อม — ต้องการ internet ครั้งแรก');
+  const{L,R,ch,sr,ns}=wd;
+  const enc=new lamejs.Mp3Encoder(ch,sr,currentBR);
+  const CHUNK=1152,out=[];
+  for(let i=0;i<ns;i+=CHUNK){
+    const e=Math.min(i+CHUNK,ns);
+    const buf=ch===1?enc.encodeBuffer(L.subarray(i,e)):enc.encodeBuffer(L.subarray(i,e),R.subarray(i,e));
+    if(buf.length>0)out.push(buf);
+    if(i%(CHUNK*40)===0){onP(Math.round(i/ns*100));await new Promise(r=>setTimeout(r,0));}
+  }
+  const fl=enc.flush();if(fl.length>0)out.push(fl);onP(100);
+  return new Blob(out,{type:'audio/mp3'});
+}
+async function convertAll(){
+  const btn=document.getElementById('btnConvert');
+  btn.disabled=true;btn.innerHTML='<span class="spinner"></span>กำลังแปลง...';
+  const pending=convertFiles.filter(f=>f.status==='wait'||f.status==='error');
+  for(const f of pending){
+    try{
+      setConvStatus(f.id,'converting',0);
+      const buf=await f.blob.arrayBuffer();
+      // detect if webm/ogg → use AudioContext decode
+      let wd;
+      const name=f.name.toLowerCase();
+      if(name.endsWith('.webm')||name.endsWith('.ogg')||name.endsWith('.mp4')){
+        const ac=new AudioContext();
+        const decoded=await ac.decodeAudioData(buf);
+        const ns=decoded.length,ch=Math.min(decoded.numberOfChannels,2),sr=decoded.sampleRate;
+        const L=new Int16Array(ns),R=new Int16Array(ns);
+        const lch=decoded.getChannelData(0);
+        const rch=ch>1?decoded.getChannelData(1):lch;
+        for(let i=0;i<ns;i++){L[i]=Math.max(-32768,Math.min(32767,lch[i]*32767));R[i]=Math.max(-32768,Math.min(32767,rch[i]*32767));}
+        wd={L,R,ch,sr,ns};ac.close();
+      } else {
+        wd=decodeWav(buf);
+      }
+      const blob=await encodeMP3(wd,p=>setConvStatus(f.id,'converting',p));
+      f.url=URL.createObjectURL(blob);f.blob=blob;
+      setConvStatus(f.id,'done',100);
+      // auto download
+      setTimeout(()=>dlConvert(f.id),300);
+    }catch(e){setConvStatus(f.id,'error',0);toast('❌ '+f.name+': '+e.message);}
+  }
+  btn.disabled=false;btn.textContent='แปลง → MP3';
+  const doneCount=convertFiles.filter(f=>f.status==='done').length;
+  toast('✅ แปลงเสร็จ '+doneCount+' ไฟล์');
+  document.getElementById('s2status').textContent='✅ '+doneCount+' ไฟล์';
+  // suggest step 3
+  setTimeout(()=>{openCard(3);document.getElementById('s3status').textContent='รอ Upload';},800);
+}
+
+// ── Step 3 ───────────────────────────────────────────────────────────────────
+function openAdobe(){window.open('https://podcast.adobe.com/enhance','_blank');document.getElementById('s3status').textContent='กำลังทำ...';}
+function doneStep3(){openCard(4);document.getElementById('s3status').textContent='✅ เสร็จ';document.getElementById('s4status').textContent='พร้อม';toast('✅ ไป Step 4 ได้เลย');}
+
+// ── Step 4 ───────────────────────────────────────────────────────────────────
+const PROMPT=`ถอดเสียงการประชุมนี้เป็นภาษาไทยทั้งหมด จากนั้นสรุปออกมาในรูปแบบนี้:
+
+📌 ประเด็นหลักที่หารือ
+- ...
+
+✅ มติ / ข้อตัดสินใจ
+- ...
+
+📋 Action Items (ใคร | ทำอะไร | ภายในเมื่อไหร่)
+- ...
+
+❓ ประเด็นที่ยังค้างอยู่
+- ...`;
+
+let step4File=null;
+
+// ── Gemini API ───────────────────────────────────────────────────────────────
+function getApiKey(){return document.getElementById('apiKeyInput').value.trim();}
+function saveApiKey(){
+  const key=getApiKey();
+  if(!key){toast('⚠ กรุณาใส่ API key');return;}
+  localStorage.setItem('geminiApiKey',key);
+  lockApiKey();
+  toast('✅ บันทึก API key แล้ว');
+}
+function lockApiKey(){
+  document.getElementById('apiKeyInput').disabled=true;
+  document.getElementById('btnApiKeySave').style.display='none';
+  document.getElementById('apiKeyStatus').style.display='flex';
+}
+function editApiKey(){
+  document.getElementById('apiKeyInput').disabled=false;
+  document.getElementById('btnApiKeySave').style.display='';
+  document.getElementById('apiKeyStatus').style.display='none';
+}
+function setStep4File(file){
+  if(!file)return;
+  step4File=file;
+  document.getElementById('step4FileName').textContent='📄 '+file.name;
+  document.getElementById('btnTranscribe').disabled=false;
+}
+async function uploadFileToGemini(file,apiKey){
+  const startRes=await fetch(`https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`,{
+    method:'POST',
+    headers:{
+      'X-Goog-Upload-Protocol':'resumable',
+      'X-Goog-Upload-Command':'start',
+      'X-Goog-Upload-Header-Content-Length':file.size,
+      'X-Goog-Upload-Header-Content-Type':file.type||'audio/mpeg',
+      'Content-Type':'application/json'
+    },
+    body:JSON.stringify({file:{display_name:file.name}})
+  });
+  if(!startRes.ok)throw new Error('อัปโหลดไม่สำเร็จ ('+startRes.status+')');
+  const uploadUrl=startRes.headers.get('X-Goog-Upload-URL');
+  const uploadRes=await fetch(uploadUrl,{
+    method:'POST',
+    headers:{
+      'Content-Length':file.size,
+      'X-Goog-Upload-Offset':'0',
+      'X-Goog-Upload-Command':'upload, finalize'
+    },
+    body:file
+  });
+  if(!uploadRes.ok)throw new Error('อัปโหลดไม่สำเร็จ ('+uploadRes.status+')');
+  const info=await uploadRes.json();
+  return info.file;
+}
+async function waitForFileActive(uri,apiKey){
+  for(let i=0;i<30;i++){
+    const res=await fetch(`${uri}?key=${apiKey}`);
+    const info=await res.json();
+    if(info.state==='ACTIVE')return info;
+    if(info.state==='FAILED')throw new Error('Gemini ประมวลผลไฟล์ล้มเหลว');
+    await new Promise(r=>setTimeout(r,2000));
+  }
+  throw new Error('รอไฟล์พร้อมใช้งานนานเกินไป');
+}
+async function transcribeAndSummarize(){
+  const apiKey=getApiKey();
+  if(!apiKey){toast('⚠ กรุณาใส่ Gemini API Key');return;}
+  if(!step4File){toast('⚠ กรุณาอัปโหลดไฟล์เสียงก่อน');return;}
+  const btn=document.getElementById('btnTranscribe');
+  const ra=document.getElementById('resultArea');
+  btn.disabled=true;btn.innerHTML='<span class="spinner"></span>กำลังอัปโหลด...';
+  document.getElementById('s4status').textContent='กำลังอัปโหลด...';
+  ra.value='';
+  try{
+    const fileInfo=await uploadFileToGemini(step4File,apiKey);
+    btn.innerHTML='<span class="spinner"></span>กำลังประมวลผล...';
+    document.getElementById('s4status').textContent='กำลังประมวลผล...';
+    const activeFile=await waitForFileActive(fileInfo.uri,apiKey);
+    const genRes=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        contents:[{parts:[
+          {text:PROMPT},
+          {file_data:{mime_type:activeFile.mimeType,file_uri:activeFile.uri}}
+        ]}]
+      })
+    });
+    const data=await genRes.json();
+    if(!genRes.ok)throw new Error(data.error?.message||'Gemini API error');
+    const text=data.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('')||'';
+    if(!text)throw new Error('ไม่พบผลลัพธ์จาก Gemini');
+    ra.value=text;
+    document.getElementById('s4status').textContent='✅ เสร็จ';
+    toast('✅ ถอดเสียง+สรุปเสร็จแล้ว');
+  }catch(e){
+    toast('❌ '+e.message);
+    document.getElementById('s4status').textContent='❌ ผิดพลาด';
+  }finally{
+    btn.disabled=false;btn.textContent='🤖 ถอดเสียง + สรุป';
+  }
+}
+function copyResult(){
+  const txt=document.getElementById('resultArea').value;
+  if(!txt){toast('⚠ ยังไม่มีข้อความ');return;}
+  navigator.clipboard.writeText(txt).then(()=>toast('📋 Copy สรุปแล้ว'));
+}
+function saveResult(){
+  const txt=document.getElementById('resultArea').value;
+  if(!txt){toast('⚠ ยังไม่มีข้อความ');return;}
+  const blob=new Blob([txt],{type:'text/plain;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='meeting-summary-'+new Date().toISOString().slice(0,10)+'.txt';a.click();
+  toast('💾 บันทึกไฟล์ .txt แล้ว');
+}
+
+// ── Events ───────────────────────────────────────────────────────────────────
+document.getElementById('btnRec').addEventListener('click',()=>{if(!isRec)startRec();else stopRec();});
+document.getElementById('btnPause').addEventListener('click',pauseRec);
+document.getElementById('btnStop').addEventListener('click',stopRec);
+document.getElementById('btnConvert').addEventListener('click',convertAll);
+
+// drop zone
+const dz=document.getElementById('dropzone2');
+const fi=document.getElementById('fileInput2');
+fi.addEventListener('change',e=>{Array.from(e.target.files).forEach(f=>addConvertFile(f,f.name));fi.value='';});
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag');});
+dz.addEventListener('dragleave',()=>dz.classList.remove('drag'));
+dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('drag');Array.from(e.dataTransfer.files).forEach(f=>addConvertFile(f,f.name));});
+
+// Space = rec toggle
+document.addEventListener('keydown',e=>{
+  if(e.target.tagName==='TEXTAREA'||e.target.tagName==='INPUT')return;
+  if(e.code==='Space'){e.preventDefault();document.getElementById('btnRec').click();}
+});
+
+// dropzone4 (step 4 audio upload)
+const dz4=document.getElementById('dropzone4');
+const fi4=document.getElementById('fileInput4');
+fi4.addEventListener('change',e=>{if(e.target.files[0])setStep4File(e.target.files[0]);fi4.value='';});
+dz4.addEventListener('dragover',e=>{e.preventDefault();dz4.classList.add('drag');});
+dz4.addEventListener('dragleave',()=>dz4.classList.remove('drag'));
+dz4.addEventListener('drop',e=>{e.preventDefault();dz4.classList.remove('drag');if(e.dataTransfer.files[0])setStep4File(e.dataTransfer.files[0]);});
+
+// restore saved Gemini API key
+const savedKey=localStorage.getItem('geminiApiKey');
+if(savedKey){document.getElementById('apiKeyInput').value=savedKey;lockApiKey();}
+
+updateBitrate();
+</script>
+</body>
+</html>
