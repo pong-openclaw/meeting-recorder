@@ -271,6 +271,7 @@ input[type=range]{accent-color:var(--c2);width:120px}
       <button class="btn btn-green" onclick="copyResult()" style="flex:1">📋 Copy สรุป</button>
       <button class="btn btn-outline" onclick="saveResult()" style="flex:1">💾 บันทึกเป็น .txt</button>
     </div>
+    <button class="btn btn-red" onclick="resetAll()" style="margin-top:12px">🔄 เริ่มบันทึกใหม่ (ล้างข้อมูลเดิมทั้งหมด)</button>
   </div>
 </div>
 
@@ -410,7 +411,16 @@ function renderRecList(){
       <span class="rname">${r.name}</span>
       <audio controls src="${r.url}" preload="none"></audio>
       <button class="pass-btn" onclick="passToConvert(${r.id})">→ Step 2</button>
+      <button class="pass-btn" style="border-color:var(--c1);color:#f87171" onclick="deleteRecording(${r.id})">🗑</button>
     </div>`).join('');
+}
+function deleteRecording(id){
+  const idx=recordings.findIndex(x=>x.id===id);if(idx===-1)return;
+  URL.revokeObjectURL(recordings[idx].url);
+  recordings.splice(idx,1);
+  renderRecList();
+  document.getElementById('s1status').textContent=recordings.length?recordings.length+' ไฟล์':'พร้อม';
+  toast('🗑 ลบไฟล์แล้ว');
 }
 function passToConvert(id){
   const r=recordings.find(x=>x.id===id);if(!r)return;
@@ -655,6 +665,22 @@ function saveResult(){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
   a.download='meeting-summary-'+new Date().toISOString().slice(0,10)+'.txt';a.click();
   toast('💾 บันทึกไฟล์ .txt แล้ว');
+}
+function resetAll(){
+  recordings.forEach(r=>URL.revokeObjectURL(r.url));
+  convertFiles.forEach(f=>{if(f.url)URL.revokeObjectURL(f.url);});
+  recordings=[];convertFiles=[];step4File=null;
+  renderRecList();renderConvertList();
+  document.getElementById('s1status').textContent='พร้อม';
+  document.getElementById('s2status').textContent='รอไฟล์';
+  document.getElementById('s3status').textContent='รอ MP3';
+  document.getElementById('s4status').textContent='รอ';
+  document.getElementById('btnConvert').disabled=true;
+  document.getElementById('step4FileName').textContent='ยังไม่มีไฟล์';
+  document.getElementById('btnTranscribe').disabled=true;
+  document.getElementById('resultArea').value='';
+  openCard(1);
+  toast('🔄 เริ่มรอบใหม่แล้ว');
 }
 
 // ── Events ───────────────────────────────────────────────────────────────────
